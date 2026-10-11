@@ -94,25 +94,6 @@ public class StandardEventConsumer {
         }
     }
 
-    @KafkaListener(
-            topics = "${app.kafka.topics.allocation-results:truckdar.events.fleet-allocation-results}",
-            groupId = "${spring.kafka.consumer.group-id:notifications-group}",
-            containerFactory = "standardKafkaListenerContainerFactory"
-    )
-    public void consumeAllocationResultEvent(EventEnvelope event) {
-        // El tópico también transporta FleetAllocationCompletedEvent sin sobre común; se ignora sin enviarlo a DLT.
-        if (event == null || event.getEventType() == null || event.getPayload() == null) {
-            log.debug("Resultado de asignación sin sobre común ignorado");
-            return;
-        }
-        if ("agent.score.ready".equals(event.getEventType())) {
-            notifyAgentScoreReady(event);
-        } else {
-            log.debug("Resultado de asignación no notificable ignorado: type='{}', eventId='{}'",
-                    event.getEventType(), event.getEventId());
-        }
-    }
-
     private void notifyLoadPublished(EventEnvelope event) {
         JsonNode payload = event.getPayload();
         // La carga recién publicada aún no tiene conductor: se confirma a la empresa generadora.
@@ -177,30 +158,10 @@ public class StandardEventConsumer {
         publishAssignmentNotified(event);
     }
 
-    private void notifyAgentScoreReady(EventEnvelope event) {
-        JsonNode payload = event.getPayload();
-        UUID recipientUserId = recipientUserId(payload);
-        Map<String, Object> vars = loadVariables(payload, event);
-        vars.put("matchingScore", number(payload, "score", "matchingScore"));
-        vars.put("driverName", text(payload, "driverName"));
-        vars.put("vehiclePlate", text(payload, "vehiclePlate"));
-        vars.put("explanation", text(payload, "explanation"));
-        vars.put("trigger", text(payload, "trigger"));
-
-        notificationService.processEventNotification(
-                recipientUserId,
-                NotificationCategory.REASIGNACION_CARGA,
-                NotificationChannel.PUSH,
-                sourceEventId(event),
-                event.getEventType(),
-                "es-CO",
-                vars,
-                null
-        );
-
-        publishAssignmentNotified(event);
-    }
-
+    /**
+     * Toda propuesta (inicial o reasignación tras agent.score.ready) llega como assignment.proposed desde
+     * Load-Allocation, que es la autoridad del estado comercial; así se notifica una sola vez y en orden.
+     */
     private void publishAssignmentNotified(EventEnvelope event) {
         JsonNode payload = event.getPayload();
         String loadId = text(payload, "loadId", "id");
