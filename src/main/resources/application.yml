@@ -33,6 +33,10 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
 
 app:
+  kafka:
+    topics:
+      load-events: truckdar.events.load-allocation
+      restrictions: truckdar.events.road-restrictions
   jwt:
     secret: TruckDarSecretKeySecurityAuthenticationToken2026MasterKey!
   security:

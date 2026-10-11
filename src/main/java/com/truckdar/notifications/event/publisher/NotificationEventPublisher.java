@@ -2,6 +2,7 @@ package com.truckdar.notifications.event.publisher;
 
 import com.truckdar.notifications.event.model.NotificationFailedEvent;
 import com.truckdar.notifications.event.model.NotificationSentEvent;
+import com.truckdar.notifications.event.model.EventEnvelope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,9 @@ public class NotificationEventPublisher {
     @Value("${app.kafka.topics.notification-failed:truckdar.notifications.failed}")
     private String notificationFailedTopic;
 
+    @Value("${app.kafka.topics.load-events:truckdar.events.load-allocation}")
+    private String loadEventsTopic;
+
     public void publishSent(NotificationSentEvent event) {
         log.info("Publishing NotificationSentEvent for notificationId: {}, recipient: {}",
                 event.getNotificationId(), event.getRecipientUserId());
@@ -39,5 +43,10 @@ public class NotificationEventPublisher {
         } catch (Exception e) {
             log.error("Failed to publish NotificationFailedEvent to Kafka: {}", e.getMessage(), e);
         }
+    }
+
+    public void publishAssignmentNotified(EventEnvelope event) {
+        log.info("Publishing assignment.notified for eventId: {}", event.getEventId());
+        kafkaTemplate.send(loadEventsTopic, event.getCorrelationId().toString(), event);
     }
 }

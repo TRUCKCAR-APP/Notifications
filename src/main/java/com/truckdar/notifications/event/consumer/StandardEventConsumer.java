@@ -1,8 +1,12 @@
 package com.truckdar.notifications.event.consumer;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.truckdar.notifications.event.model.EventEnvelope;
 import com.truckdar.notifications.event.model.DispatcherMessageEvent;
 import com.truckdar.notifications.event.model.LoadReassignedEvent;
 import com.truckdar.notifications.event.model.TripStatusChangedEvent;
+import com.truckdar.notifications.event.publisher.NotificationEventPublisher;
 import com.truckdar.notifications.model.NotificationCategory;
 import com.truckdar.notifications.model.NotificationChannel;
 import com.truckdar.notifications.service.NotificationService;
@@ -13,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Consumer for standard domain events (load reassignment, trip status updates, dispatcher direct messages).
@@ -23,6 +28,222 @@ import java.util.Map;
 public class StandardEventConsumer {
 
     private final NotificationService notificationService;
+    private final NotificationEventPublisher notificationEventPublisher;
+
+    @KafkaListener(
+            topics = "${app.kafka.topics.restrictions:truckdar.events.road-restrictions}",
+            groupId = "${spring.kafka.consumer.group-id:notifications-group}",
+            containerFactory = "standardKafkaListenerContainerFactory"
+    )
+    public void consumeRestrictionEvent(EventEnvelope event) {
+        if (event == null || event.getEventType() == null || event.getPayload() == null) {
+            throw new IllegalArgumentException("El evento de restricción debe incluir tipo y payload");
+        }
+        if (!"restriction.created".equals(event.getEventType())
+                && !"route.updated".equals(event.getEventType())) {
+            log.debug("Evento de restricción no notificable ignorado: type='{}'", event.getEventType());
+            return;
+        }
+
+        JsonNode payload = event.getPayload();
+        String recipient = text(payload, "recipientUserId", "assignedDriverId", "driverId");
+        if (recipient == null) {
+            log.info("Restricción recibida sin destinatario individual; se conserva para distribución posterior: eventId='{}'",
+                    event.getEventId());
+            return;
+        }
+        UUID recipientUserId;
+        try {
+            recipientUserId = UUID.fromString(recipient);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("recipientUserId no es un UUID válido", exception);
+        }
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("restrictionId", text(payload, "restrictionId", "restrictionCode"));
+        vars.put("title", text(payload, "title"));
+        vars.put("roadCorridor", text(payload, "roadCorridor"));
+        vars.put("severity", text(payload, "severity"));
+
+        notificationService.processEventNotification(
+                recipientUserId,
+                NotificationCategory.ALERTA_RUTA,
+                NotificationChannel.PUSH,
+                sourceEventId(event),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+    }
+
+    @KafkaListener(
+            topics = "${app.kafka.topics.load-events:truckdar.events.load-allocation}",
+            groupId = "${spring.kafka.consumer.group-id:notifications-group}",
+            containerFactory = "standardKafkaListenerContainerFactory"
+    )
+    public void consumeLoadEvent(EventEnvelope event) {
+        if (event == null || event.getEventType() == null || event.getPayload() == null) {
+            throw new IllegalArgumentException("El evento de carga debe incluir tipo y payload");
+        }
+
+        String eventType = event.getEventType();
+        if ("load.published".equals(eventType)) {
+            notifyLoadPublished(event);
+        } else if ("load.assigned".equals(eventType)) {
+            notifyLoadAssigned(event);
+        } else if ("assignment.proposed".equals(eventType)) {
+            notifyAssignmentProposed(event);
+        } else if ("agent.score.ready".equals(eventType)) {
+            notifyAgentScoreReady(event);
+        } else {
+            log.debug("Evento de carga no notificable ignorado: type='{}', eventId='{}'",
+                    eventType, event.getEventId());
+        }
+    }
+
+    private void notifyLoadPublished(EventEnvelope event) {
+        JsonNode payload = event.getPayload();
+        UUID recipientUserId = recipientUserId(payload);
+        Map<String, Object> vars = loadVariables(payload, event);
+
+        notificationService.processEventNotification(
+                recipientUserId,
+                NotificationCategory.CAMBIO_ESTADO_VIAJE,
+                NotificationChannel.PUSH,
+                sourceEventId(event),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+    }
+
+    private void notifyLoadAssigned(EventEnvelope event) {
+        JsonNode payload = event.getPayload();
+        UUID recipientUserId = recipientUserId(payload);
+        Map<String, Object> vars = loadVariables(payload, event);
+        vars.put("driverName", text(payload, "assignedDriverName"));
+        vars.put("vehiclePlate", text(payload, "assignedVehiclePlate"));
+
+        notificationService.processEventNotification(
+                recipientUserId,
+                NotificationCategory.REASIGNACION_CARGA,
+                NotificationChannel.PUSH,
+                sourceEventId(event),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+    }
+
+    private void notifyAssignmentProposed(EventEnvelope event) {
+        JsonNode payload = event.getPayload();
+        UUID recipientUserId = recipientUserId(payload);
+        Map<String, Object> vars = loadVariables(payload, event);
+        vars.put("matchingScore", number(payload, "matchingScore"));
+        vars.put("driverName", text(payload, "driverName", "assignedDriverName"));
+        vars.put("vehiclePlate", text(payload, "vehiclePlate", "assignedVehiclePlate"));
+
+        notificationService.processEventNotification(
+                recipientUserId,
+                NotificationCategory.REASIGNACION_CARGA,
+                NotificationChannel.PUSH,
+                sourceEventId(event),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+    }
+
+    private void notifyAgentScoreReady(EventEnvelope event) {
+        JsonNode payload = event.getPayload();
+        UUID recipientUserId = recipientUserId(payload);
+        Map<String, Object> vars = loadVariables(payload, event);
+        vars.put("matchingScore", number(payload, "score", "matchingScore"));
+        vars.put("driverName", text(payload, "driverName"));
+        vars.put("vehiclePlate", text(payload, "vehiclePlate"));
+        vars.put("explanation", text(payload, "explanation"));
+        vars.put("trigger", text(payload, "trigger"));
+
+        notificationService.processEventNotification(
+                recipientUserId,
+                NotificationCategory.REASIGNACION_CARGA,
+                NotificationChannel.PUSH,
+                sourceEventId(event),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+
+        ObjectNode notifiedPayload = payload.deepCopy();
+        if (!notifiedPayload.hasNonNull("assignedDriverId")
+                && notifiedPayload.hasNonNull("driverId")) {
+            notifiedPayload.set("assignedDriverId", notifiedPayload.get("driverId"));
+        }
+        EventEnvelope notifiedEvent = EventEnvelope.builder()
+                .eventId(UUID.randomUUID())
+                .eventType("assignment.notified")
+                .occurredAt(java.time.Instant.now())
+                .correlationId(event.getCorrelationId())
+                .version(1)
+                .producer("notifications")
+                .payload(notifiedPayload)
+                .build();
+        notificationEventPublisher.publishAssignmentNotified(notifiedEvent);
+    }
+
+    private UUID recipientUserId(JsonNode payload) {
+        String value = text(payload, "recipientUserId", "assignedDriverId", "driverId");
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("El payload no contiene recipientUserId");
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("recipientUserId no es un UUID válido", exception);
+        }
+    }
+
+    private Map<String, Object> loadVariables(JsonNode payload, EventEnvelope event) {
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("loadId", text(payload, "loadId", "id"));
+        vars.put("origin", text(payload, "originCity", "origin"));
+        vars.put("destination", text(payload, "destinationCity", "destination"));
+        vars.put("cargoDescription", text(payload, "cargoDescription"));
+        vars.put("weightTons", number(payload, "weightTons"));
+        vars.put("correlationId", event.getCorrelationId());
+        return vars;
+    }
+
+    private String sourceEventId(EventEnvelope event) {
+        if (event.getEventId() == null) {
+            throw new IllegalArgumentException("El sobre debe incluir eventId");
+        }
+        return event.getEventId().toString();
+    }
+
+    private String text(JsonNode payload, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            JsonNode value = payload.get(fieldName);
+            if (value != null && !value.isNull() && !value.asText().isBlank()) {
+                return value.asText();
+            }
+        }
+        return null;
+    }
+
+    private Double number(JsonNode payload, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            JsonNode value = payload.get(fieldName);
+            if (value != null && value.isNumber()) {
+                return value.asDouble();
+            }
+        }
+        return null;
+    }
 
     @KafkaListener(
             topics = "${app.kafka.topics.load-reassigned:truckdar.loads.reassigned}",
