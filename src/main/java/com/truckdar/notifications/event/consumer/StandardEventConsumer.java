@@ -52,12 +52,7 @@ public class StandardEventConsumer {
                     event.getEventId());
             return;
         }
-        UUID recipientUserId;
-        try {
-            recipientUserId = UUID.fromString(recipient);
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("recipientUserId no es un UUID válido", exception);
-        }
+        UUID recipientUserId = RecipientIdResolver.resolve(recipient);
         Map<String, Object> vars = new HashMap<>();
         vars.put("restrictionId", text(payload, "restrictionId", "restrictionCode"));
         vars.put("title", text(payload, "title"));
@@ -93,17 +88,40 @@ public class StandardEventConsumer {
             notifyLoadAssigned(event);
         } else if ("assignment.proposed".equals(eventType)) {
             notifyAssignmentProposed(event);
-        } else if ("agent.score.ready".equals(eventType)) {
-            notifyAgentScoreReady(event);
         } else {
             log.debug("Evento de carga no notificable ignorado: type='{}', eventId='{}'",
                     eventType, event.getEventId());
         }
     }
 
+    @KafkaListener(
+            topics = "${app.kafka.topics.allocation-results:truckdar.events.fleet-allocation-results}",
+            groupId = "${spring.kafka.consumer.group-id:notifications-group}",
+            containerFactory = "standardKafkaListenerContainerFactory"
+    )
+    public void consumeAllocationResultEvent(EventEnvelope event) {
+        // El tópico también transporta FleetAllocationCompletedEvent sin sobre común; se ignora sin enviarlo a DLT.
+        if (event == null || event.getEventType() == null || event.getPayload() == null) {
+            log.debug("Resultado de asignación sin sobre común ignorado");
+            return;
+        }
+        if ("agent.score.ready".equals(event.getEventType())) {
+            notifyAgentScoreReady(event);
+        } else {
+            log.debug("Resultado de asignación no notificable ignorado: type='{}', eventId='{}'",
+                    event.getEventType(), event.getEventId());
+        }
+    }
+
     private void notifyLoadPublished(EventEnvelope event) {
         JsonNode payload = event.getPayload();
-        UUID recipientUserId = recipientUserId(payload);
+        // La carga recién publicada aún no tiene conductor: se confirma a la empresa generadora.
+        UUID recipientUserId = RecipientIdResolver.resolve(
+                text(payload, "recipientUserId", "generatorCompanyId"));
+        if (recipientUserId == null) {
+            log.warn("load.published sin destinatario resoluble; no se notifica: eventId='{}'", event.getEventId());
+            return;
+        }
         Map<String, Object> vars = loadVariables(payload, event);
 
         notificationService.processEventNotification(
@@ -155,6 +173,8 @@ public class StandardEventConsumer {
                 vars,
                 null
         );
+
+        publishAssignmentNotified(event);
     }
 
     private void notifyAgentScoreReady(EventEnvelope event) {
@@ -178,6 +198,15 @@ public class StandardEventConsumer {
                 null
         );
 
+        publishAssignmentNotified(event);
+    }
+
+    private void publishAssignmentNotified(EventEnvelope event) {
+        JsonNode payload = event.getPayload();
+        String loadId = text(payload, "loadId", "id");
+        if (loadId == null) {
+            throw new IllegalArgumentException("assignment.notified requiere loadId para preservar el orden por carga");
+        }
         ObjectNode notifiedPayload = payload.deepCopy();
         if (!notifiedPayload.hasNonNull("assignedDriverId")
                 && notifiedPayload.hasNonNull("driverId")) {
@@ -192,19 +221,16 @@ public class StandardEventConsumer {
                 .producer("notifications")
                 .payload(notifiedPayload)
                 .build();
-        notificationEventPublisher.publishAssignmentNotified(notifiedEvent);
+        notificationEventPublisher.publishAssignmentNotified(loadId, notifiedEvent);
     }
 
     private UUID recipientUserId(JsonNode payload) {
-        String value = text(payload, "recipientUserId", "assignedDriverId", "driverId");
-        if (value == null || value.isBlank()) {
+        UUID recipientUserId = RecipientIdResolver.resolve(
+                text(payload, "recipientUserId", "assignedDriverId", "driverId"));
+        if (recipientUserId == null) {
             throw new IllegalArgumentException("El payload no contiene recipientUserId");
         }
-        try {
-            return UUID.fromString(value);
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("recipientUserId no es un UUID válido", exception);
-        }
+        return recipientUserId;
     }
 
     private Map<String, Object> loadVariables(JsonNode payload, EventEnvelope event) {

@@ -22,8 +22,8 @@ public class NotificationEventPublisher {
     @Value("${app.kafka.topics.notification-failed:truckdar.notifications.failed}")
     private String notificationFailedTopic;
 
-    @Value("${app.kafka.topics.load-events:truckdar.events.load-allocation}")
-    private String loadEventsTopic;
+    @Value("${app.kafka.topics.assignment-notifications:truckdar.events.assignment-notifications}")
+    private String assignmentNotificationsTopic;
 
     public void publishSent(NotificationSentEvent event) {
         log.info("Publishing NotificationSentEvent for notificationId: {}, recipient: {}",
@@ -45,8 +45,8 @@ public class NotificationEventPublisher {
         }
     }
 
-    public void publishAssignmentNotified(EventEnvelope event) {
-        log.info("Publishing assignment.notified for eventId: {}", event.getEventId());
-        kafkaTemplate.send(loadEventsTopic, event.getCorrelationId().toString(), event);
+    public void publishAssignmentNotified(String loadId, EventEnvelope event) {
+        log.info("Publishing assignment.notified for load {} (eventId: {})", loadId, event.getEventId());
+        kafkaTemplate.send(assignmentNotificationsTopic, loadId, event);
     }
 }

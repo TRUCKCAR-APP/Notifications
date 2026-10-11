@@ -36,6 +36,8 @@ app:
   kafka:
     topics:
       load-events: truckdar.events.load-allocation
+      allocation-results: truckdar.events.fleet-allocation-results
+      assignment-notifications: truckdar.events.assignment-notifications
       restrictions: truckdar.events.road-restrictions
   jwt:
     secret: TruckDarSecretKeySecurityAuthenticationToken2026MasterKey!
