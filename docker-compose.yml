@@ -99,6 +99,10 @@ services:
       AWS_S3_BUCKET: truckdar-voice-notifications
       AWS_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:truckdar-notifications
       SERVER_PORT: 8083
+      # Mismo secreto JWT (Base64, >= 256 bits) que User-Identity y api-gateway; se toma del entorno.
+      TRUCKDAR_JWT_SECRET: ${TRUCKDAR_JWT_SECRET:-${JWT_SECRET:-}}
+      # Opcional: habilita POST /api/v1/notifications/send con el header X-API-KEY.
+      TRUCKDAR_NOTIFICATIONS_API_KEY: ${TRUCKDAR_NOTIFICATIONS_API_KEY:-}
     networks:
       - truckdar-network
 

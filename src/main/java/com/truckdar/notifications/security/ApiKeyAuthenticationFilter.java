@@ -22,7 +22,8 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String API_KEY_HEADER = "X-API-KEY";
 
-    @Value("${app.security.api-key:truckdar-internal-service-key-2026}")
+    // Sin valor por defecto: si TRUCKDAR_NOTIFICATIONS_API_KEY no está definida, la autenticación por API key queda deshabilitada.
+    @Value("${app.security.api-key:}")
     private String configuredApiKey;
 
     @Override
@@ -31,7 +32,8 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String apiKeyHeader = request.getHeader(API_KEY_HEADER);
 
-        if (StringUtils.hasText(apiKeyHeader) && apiKeyHeader.equals(configuredApiKey)) {
+        if (StringUtils.hasText(configuredApiKey) && StringUtils.hasText(apiKeyHeader)
+                && apiKeyHeader.equals(configuredApiKey)) {
             UserPrincipal servicePrincipal = UserPrincipal.builder()
                     .email("internal-service@truckdar.co")
                     .role("INTERNAL_SERVICE")

@@ -13,7 +13,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -24,14 +23,17 @@ public class JwtTokenProvider {
 
     private final SecretKey secretKey;
 
-    public JwtTokenProvider(@Value("${app.jwt.secret:dHJ1Y2tkYXItdXNlci1pZGVudGl0eS1zZWNyZXQta2V5LWJhc2U2NC1lbmNvZGVkLWF0LWxlYXN0LTI1Ni1iaXRz}") String secret) {
-        byte[] keyBytes;
+    /**
+     * Mismo secreto y misma decodificación (Base64 estricto) que User-Identity y api-gateway:
+     * el token emitido por User-Identity debe validar aquí sin configuración adicional.
+     */
+    public JwtTokenProvider(@Value("${app.jwt.secret}") String secret) {
         try {
-            keyBytes = Decoders.BASE64.decode(secret);
-        } catch (IllegalArgumentException e) {
-            keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+            this.secretKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+        } catch (RuntimeException e) {
+            throw new IllegalStateException(
+                    "TRUCKDAR_JWT_SECRET debe ser un valor Base64 de al menos 256 bits, igual al de User-Identity", e);
         }
-        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
     }
 
     public boolean validateToken(String token) {

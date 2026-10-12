@@ -239,7 +239,16 @@ LocalStack se inicializa automáticamente creando:
 - Tópico SNS: `truckdar-notifications`
 
 ### 3. Ejecutar la Aplicación
+
+Variables de seguridad (nunca se versionan):
+
+| Variable | Descripción |
+|---|---|
+| `TRUCKDAR_JWT_SECRET` | **Obligatoria.** Secreto JWT en Base64 (>= 256 bits), el mismo de User-Identity y api-gateway. Sin él el servicio no arranca. Si no está definida, `docker compose` usa `JWT_SECRET` (nombre heredado). |
+| `TRUCKDAR_NOTIFICATIONS_API_KEY` | Opcional. Habilita `POST /api/v1/notifications/send` con el header `X-API-KEY`; si está vacía, ese acceso queda deshabilitado. |
+
 ```bash
+export TRUCKDAR_JWT_SECRET="<mismo valor que en User-Identity>"
 # Con Maven Wrapper usando perfil local
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```

@@ -39,13 +39,10 @@ app:
       assignment-notifications: truckdar.events.assignment-notifications
       restrictions: truckdar.events.road-restrictions
   jwt:
-    secret: TruckDarSecretKeySecurityAuthenticationToken2026MasterKey!
+    # Mismo secreto Base64 que User-Identity y api-gateway (JWT_SECRET: nombre heredado). Sin valor por defecto.
+    secret: ${TRUCKDAR_JWT_SECRET:${JWT_SECRET:}}
   security:
-    api-key: truckdar-internal-service-key-2026
-
-security:
-  jwt:
-    secret-key: TruckDarSecretKeySecurityAuthenticationToken2026MasterKey!
+    api-key: ${TRUCKDAR_NOTIFICATIONS_API_KEY:}
 
 cloud:
   aws:
