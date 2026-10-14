@@ -1,6 +1,6 @@
 -- =============================================================================
 -- V1 - Esquema inicial: tablas notification_templates, notifications y audio_cache
--- Microservicio Notifications (TruckDar)
+-- Microservicio Notifications (TruckCar)
 -- Compatible con PostgreSQL y H2 PostgreSQL Mode
 -- =============================================================================
 

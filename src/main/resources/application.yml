@@ -6,9 +6,9 @@ spring:
     name: ms-notifications
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/truckdar_db
-    username: truckdar_admin
-    password: truckdar_password
+    url: jdbc:postgresql://localhost:5432/truckcar_db
+    username: truckcar_admin
+    password: truckcar_password
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -20,9 +20,9 @@ spring:
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
-    url: jdbc:postgresql://localhost:5432/truckdar_db
-    user: truckdar_admin
-    password: truckdar_password
+    url: jdbc:postgresql://localhost:5432/truckcar_db
+    user: truckcar_admin
+    password: truckcar_password
 
   kafka:
     bootstrap-servers: localhost:9092
@@ -35,14 +35,14 @@ spring:
 app:
   kafka:
     topics:
-      load-events: truckdar.events.load-allocation
-      assignment-notifications: truckdar.events.assignment-notifications
-      restrictions: truckdar.events.road-restrictions
+      load-events: truckcar.events.load-allocation
+      assignment-notifications: truckcar.events.assignment-notifications
+      restrictions: truckcar.events.road-restrictions
   jwt:
     # Mismo secreto Base64 que User-Identity y api-gateway (JWT_SECRET: nombre heredado). Sin valor por defecto.
-    secret: ${TRUCKDAR_JWT_SECRET:${JWT_SECRET:}}
+    secret: ${TRUCKCAR_JWT_SECRET:${JWT_SECRET:}}
   security:
-    api-key: ${TRUCKDAR_NOTIFICATIONS_API_KEY:}
+    api-key: ${TRUCKCAR_NOTIFICATIONS_API_KEY:}
 
 cloud:
   aws:

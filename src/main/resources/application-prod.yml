@@ -17,5 +17,5 @@ spring:
 logging:
   level:
     root: WARN
-    com.truckdar.notifications: INFO
+    com.truckcar.notifications: INFO
     org.springframework.security: WARN

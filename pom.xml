@@ -11,11 +11,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.truckdar</groupId>
+    <groupId>com.truckcar</groupId>
     <artifactId>notifications</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Notifications</name>
-    <description>TruckDar Notifications Microservice - Push (SNS) and Voice (Polly + S3)</description>
+    <description>TruckCar Notifications Microservice - Push (SNS) and Voice (Polly + S3)</description>
 
     <properties>
         <java.version>21</java.version>

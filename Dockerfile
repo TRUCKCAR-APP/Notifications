@@ -20,12 +20,12 @@ FROM eclipse-temurin:21-jre-jammy AS runtime
 WORKDIR /app
 
 # Create unprivileged user
-RUN groupadd -r truckdar && useradd -r -g truckdar truckdar
+RUN groupadd -r truckcar && useradd -r -g truckcar truckcar
 
 COPY --from=builder /app/target/notifications-*.jar app.jar
-RUN chown -R truckdar:truckdar /app
+RUN chown -R truckcar:truckcar /app
 
-USER truckdar
+USER truckcar
 
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
 ENV SERVER_PORT=8083

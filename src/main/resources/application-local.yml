@@ -4,7 +4,7 @@
 
 spring:
   datasource:
-    url: jdbc:h2:mem:truckdar_notifications;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    url: jdbc:h2:mem:truckcar_notifications;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
@@ -28,11 +28,11 @@ aws:
   access-key-id: test
   secret-access-key: test
   s3:
-    bucket: truckdar-voice-notifications
+    bucket: truckcar-voice-notifications
   sns:
-    topic-arn: arn:aws:sns:us-east-1:000000000000:truckdar-notifications
+    topic-arn: arn:aws:sns:us-east-1:000000000000:truckcar-notifications
 
 logging:
   level:
-    com.truckdar.notifications: DEBUG
+    com.truckcar.notifications: DEBUG
     org.springframework.security: INFO

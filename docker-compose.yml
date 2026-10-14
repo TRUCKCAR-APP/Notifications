@@ -4,38 +4,38 @@ services:
   # =============================================================================
   postgres:
     image: postgres:16-alpine
-    container_name: truckdar-notifications-db
+    container_name: truckcar-notifications-db
     environment:
-      POSTGRES_DB: truckdar_notifications
-      POSTGRES_USER: truckdar
-      POSTGRES_PASSWORD: truckdar
+      POSTGRES_DB: truckcar_notifications
+      POSTGRES_USER: truckcar
+      POSTGRES_PASSWORD: truckcar
     ports:
       - "5432:5432"
     volumes:
       - pgdata_notifications:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U truckdar -d truckdar_notifications"]
+      test: ["CMD-SHELL", "pg_isready -U truckcar -d truckcar_notifications"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - truckdar-network
+      - truckcar-network
 
   # =============================================================================
   # Kafka & Zookeeper (Simulación local de Amazon MSK)
   # =============================================================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: truckdar-zookeeper
+    container_name: truckcar-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     networks:
-      - truckdar-network
+      - truckcar-network
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: truckdar-kafka
+    container_name: truckcar-kafka
     depends_on:
       - zookeeper
     ports:
@@ -49,14 +49,14 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     networks:
-      - truckdar-network
+      - truckcar-network
 
   # =============================================================================
   # LocalStack (Simulación local de AWS SNS, Polly y S3)
   # =============================================================================
   localstack:
     image: localstack/localstack:3.0
-    container_name: truckdar-localstack
+    container_name: truckcar-localstack
     ports:
       - "4566:4566"
     environment:
@@ -67,7 +67,7 @@ services:
       - ./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
       - "/var/run/docker.sock:/var/run/docker.sock"
     networks:
-      - truckdar-network
+      - truckcar-network
 
   # =============================================================================
   # Notifications Microservice
@@ -76,7 +76,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: truckdar-notifications-service
+    container_name: truckcar-notifications-service
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,28 +88,28 @@ services:
       - "8083:8083"
     environment:
       SPRING_PROFILES_ACTIVE: local
-      DB_URL: jdbc:postgresql://postgres:5432/truckdar_notifications
-      DB_USERNAME: truckdar
-      DB_PASSWORD: truckdar
+      DB_URL: jdbc:postgresql://postgres:5432/truckcar_notifications
+      DB_USERNAME: truckcar
+      DB_PASSWORD: truckcar
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
       AWS_ENDPOINT_OVERRIDE: http://localstack:4566
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      AWS_S3_BUCKET: truckdar-voice-notifications
-      AWS_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:truckdar-notifications
+      AWS_S3_BUCKET: truckcar-voice-notifications
+      AWS_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:truckcar-notifications
       SERVER_PORT: 8083
       # Mismo secreto JWT (Base64, >= 256 bits) que User-Identity y api-gateway; se toma del entorno.
-      TRUCKDAR_JWT_SECRET: ${TRUCKDAR_JWT_SECRET:-${JWT_SECRET:-}}
+      TRUCKCAR_JWT_SECRET: ${TRUCKCAR_JWT_SECRET:-${JWT_SECRET:-}}
       # Opcional: habilita POST /api/v1/notifications/send con el header X-API-KEY.
-      TRUCKDAR_NOTIFICATIONS_API_KEY: ${TRUCKDAR_NOTIFICATIONS_API_KEY:-}
+      TRUCKCAR_NOTIFICATIONS_API_KEY: ${TRUCKCAR_NOTIFICATIONS_API_KEY:-}
     networks:
-      - truckdar-network
+      - truckcar-network
 
 volumes:
   pgdata_notifications:
 
 networks:
-  truckdar-network:
-    name: truckdar-network
+  truckcar-network:
+    name: truckcar-network
     driver: bridge

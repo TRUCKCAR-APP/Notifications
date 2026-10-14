@@ -12,5 +12,5 @@ spring:
 
 logging:
   level:
-    com.truckdar.notifications: INFO
+    com.truckcar.notifications: INFO
     org.springframework.security: INFO

@@ -1,6 +1,6 @@
-# TruckDar - Microservicio Notifications
+# TruckCar - Microservicio Notifications
 
-Microservicio responsable de la entrega confiable y auditable de notificaciones para la plataforma **TruckDar** (navegación y comunidad para transporte de carga pesada en Colombia).
+Microservicio responsable de la entrega confiable y auditable de notificaciones para la plataforma **TruckCar** (navegación y comunidad para transporte de carga pesada en Colombia).
 
 Distribuye notificaciones a los conductores y coordinadores a través de dos canales:
 1. **Push Notifications (Texto):** Hacia la app móvil (Android FCM / iOS APNs) y panel web del coordinador — integrado mediante **Amazon SNS Mobile Push**.
@@ -119,11 +119,11 @@ sequenceDiagram
         alt Envío Exitoso
             Service->>DB: Actualizar Status: SENT, sentAt, audioUrl
             Service->>Pub: publishSent(NotificationSentEvent)
-            Pub->>Kafka: Topic: truckdar.notifications.sent
+            Pub->>Kafka: Topic: truckcar.notifications.sent
         else Fallo tras Reintentos (Resilience4j)
             Service->>DB: Actualizar Status: FAILED, failureReason
             Service->>Pub: publishFailed(NotificationFailedEvent)
-            Pub->>Kafka: Topic: truckdar.notifications.failed
+            Pub->>Kafka: Topic: truckcar.notifications.failed
         end
     end
 ```
@@ -144,7 +144,7 @@ sequenceDiagram
 ## 📦 Estructura del Proyecto
 
 ```text
-com.truckdar.notifications
+com.truckcar.notifications
 ├── channel/
 │   ├── PushNotifier.java                  # Interfaz de envío Push
 │   ├── VoiceSynthesizer.java              # Interfaz de síntesis de voz
@@ -194,16 +194,16 @@ com.truckdar.notifications
 
 | Evento | Tópico | Categoría | Canal | Prioridad |
 |---|---|---|---|---|
-| `LoadReassignedEvent` | `truckdar.loads.reassigned` | `REASIGNACION_CARGA` | `PUSH` | Estándar |
-| `RouteAlertConfirmedEvent` | `truckdar.route.alerts` | `ALERTA_RUTA` | `VOICE` | **Alta (Seguridad Vial)** |
-| `RoadClosureDetectedEvent` | `truckdar.route.closures` | `CIERRE_VIAL` | `VOICE` | **Alta (Seguridad Vial)** |
-| `DispatcherMessageEvent` | `truckdar.dispatch.messages` | `MENSAJE_DESPACHADOR` | `PUSH` + `VOICE` | Estándar |
-| `TripStatusChangedEvent` | `truckdar.trips.status` | `CAMBIO_ESTADO_VIAJE` | `PUSH` | Estándar |
+| `LoadReassignedEvent` | `truckcar.loads.reassigned` | `REASIGNACION_CARGA` | `PUSH` | Estándar |
+| `RouteAlertConfirmedEvent` | `truckcar.route.alerts` | `ALERTA_RUTA` | `VOICE` | **Alta (Seguridad Vial)** |
+| `RoadClosureDetectedEvent` | `truckcar.route.closures` | `CIERRE_VIAL` | `VOICE` | **Alta (Seguridad Vial)** |
+| `DispatcherMessageEvent` | `truckcar.dispatch.messages` | `MENSAJE_DESPACHADOR` | `PUSH` + `VOICE` | Estándar |
+| `TripStatusChangedEvent` | `truckcar.trips.status` | `CAMBIO_ESTADO_VIAJE` | `PUSH` | Estándar |
 
 ### Eventos Publicados
 
-- `NotificationSentEvent` (`truckdar.notifications.sent`): Emitido cuando una notificación se envía o sintetiza exitosamente.
-- `NotificationFailedEvent` (`truckdar.notifications.failed`): Emitido cuando se agotan los reintentos tras fallo de entrega en el canal.
+- `NotificationSentEvent` (`truckcar.notifications.sent`): Emitido cuando una notificación se envía o sintetiza exitosamente.
+- `NotificationFailedEvent` (`truckcar.notifications.failed`): Emitido cuando se agotan los reintentos tras fallo de entrega en el canal.
 
 ---
 
@@ -235,8 +235,8 @@ docker compose up -d postgres kafka zookeeper localstack
 ```
 
 LocalStack se inicializa automáticamente creando:
-- Bucket S3: `truckdar-voice-notifications`
-- Tópico SNS: `truckdar-notifications`
+- Bucket S3: `truckcar-voice-notifications`
+- Tópico SNS: `truckcar-notifications`
 
 ### 3. Ejecutar la Aplicación
 
@@ -244,11 +244,11 @@ Variables de seguridad (nunca se versionan):
 
 | Variable | Descripción |
 |---|---|
-| `TRUCKDAR_JWT_SECRET` | **Obligatoria.** Secreto JWT en Base64 (>= 256 bits), el mismo de User-Identity y api-gateway. Sin él el servicio no arranca. Si no está definida, `docker compose` usa `JWT_SECRET` (nombre heredado). |
-| `TRUCKDAR_NOTIFICATIONS_API_KEY` | Opcional. Habilita `POST /api/v1/notifications/send` con el header `X-API-KEY`; si está vacía, ese acceso queda deshabilitado. |
+| `TRUCKCAR_JWT_SECRET` | **Obligatoria.** Secreto JWT en Base64 (>= 256 bits), el mismo de User-Identity y api-gateway. Sin él el servicio no arranca. Si no está definida, `docker compose` usa `JWT_SECRET` (nombre heredado). |
+| `TRUCKCAR_NOTIFICATIONS_API_KEY` | Opcional. Habilita `POST /api/v1/notifications/send` con el header `X-API-KEY`; si está vacía, ese acceso queda deshabilitado. |
 
 ```bash
-export TRUCKDAR_JWT_SECRET="<mismo valor que en User-Identity>"
+export TRUCKCAR_JWT_SECRET="<mismo valor que en User-Identity>"
 # Con Maven Wrapper usando perfil local
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
