@@ -1,5 +1,6 @@
 package com.truckcar.notifications.config;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -19,7 +20,7 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.converter.RecordMessageConverter;
 import org.springframework.kafka.support.converter.StringJsonMessageConverter;
 import org.springframework.kafka.support.serializer.JsonSerializer;
-import org.springframework.util.backoff.ExponentialBackOff;
+import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -60,23 +61,38 @@ public class KafkaConfig {
     }
 
     // --- ERROR HANDLER & DLT RECOVERER ---
+    /**
+     * 3 reintentos (1 s, 2 s, 4 s) y después &lt;tópico&gt;.DLT; un mensaje mal formado va directo al DLT.
+     * <p>
+     * Los consumidores leen el valor como String: el DLT se publica con StringSerializer para conservar el mensaje
+     * original (con el KafkaTemplate JSON de la aplicación llegaba como un string JSON escapado).
+     */
     @Bean
-    public DefaultErrorHandler kafkaErrorHandler(KafkaTemplate<String, Object> kafkaTemplate) {
+    public DefaultErrorHandler kafkaErrorHandler() {
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(
-                kafkaTemplate,
+                new KafkaTemplate<>(deadLetterProducerFactory()),
                 (record, ex) -> {
-                    log.error("Sending failed record from topic {} to DLT. Cause: {}", record.topic(), ex.getMessage());
-                    return new TopicPartition(record.topic() + dltSuffix, record.partition());
+                    log.error("Sending failed record {}-{}@{} to {}{}. Cause: {}", record.topic(), record.partition(),
+                            record.offset(), record.topic(), dltSuffix, ex.getMessage());
+                    // Partición -1: la elige el productor, aunque el DLT tenga menos particiones que el original.
+                    return new TopicPartition(record.topic() + dltSuffix, -1);
                 }
         );
 
-        // Exponential backoff: initial 1s, factor 2.0, max 3 attempts
-        ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
-        backOff.setMaxElapsedTime(10000L);
+        ExponentialBackOffWithMaxRetries backOff = new ExponentialBackOffWithMaxRetries(3);
+        backOff.setInitialInterval(1_000L);
+        backOff.setMultiplier(2.0);
 
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
-        errorHandler.addNotRetryableExceptions(IllegalArgumentException.class);
+        errorHandler.addNotRetryableExceptions(IllegalArgumentException.class, JsonProcessingException.class);
         return errorHandler;
+    }
+
+    @Bean(destroyMethod = "destroy")
+    DefaultKafkaProducerFactory<String, String> deadLetterProducerFactory() {
+        return new DefaultKafkaProducerFactory<>(
+                Map.of(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers, ProducerConfig.ACKS_CONFIG, "all"),
+                new StringSerializer(), new StringSerializer());
     }
 
     // --- CONSUMER FACTORY BASE ---
