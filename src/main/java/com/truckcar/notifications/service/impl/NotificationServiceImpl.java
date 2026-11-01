@@ -224,6 +224,7 @@ public class NotificationServiceImpl implements NotificationService {
             case CIERRE_VIAL -> "Cierre Vial";
             case MENSAJE_DESPACHADOR -> "Mensaje del Despachador";
             case CAMBIO_ESTADO_VIAJE -> "Estado del Viaje";
+            case EMERGENCIA_SOS -> "SOS · Conductor pide ayuda";
         };
     }
 }

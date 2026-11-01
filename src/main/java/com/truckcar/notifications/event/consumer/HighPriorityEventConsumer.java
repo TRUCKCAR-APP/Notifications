@@ -1,5 +1,7 @@
 package com.truckcar.notifications.event.consumer;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.truckcar.notifications.event.model.EventEnvelope;
 import com.truckcar.notifications.event.model.RoadClosureDetectedEvent;
 import com.truckcar.notifications.event.model.RouteAlertConfirmedEvent;
 import com.truckcar.notifications.model.NotificationCategory;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Consumer dedicated to high-priority safety road alerts requiring immediate voice delivery to drivers.
@@ -49,6 +52,63 @@ public class HighPriorityEventConsumer {
                 vars,
                 null
         );
+    }
+
+    /**
+     * Botón SOS (alert.sos.triggered de Community-Alerts): push de emergencia por el tópico SNS al que está suscrita la
+     * torre de control. El destinatario registrado es el conductor que pidió ayuda (el sujeto de la emergencia). Los
+     * demás eventos del tópico (alert.sos.acknowledged) no generan notificación.
+     */
+    @KafkaListener(
+            topics = "${app.kafka.topics.sos:truckcar.events.sos}",
+            groupId = "${spring.kafka.consumer.group-id:notifications-group}-high-priority",
+            containerFactory = "highPriorityKafkaListenerContainerFactory"
+    )
+    public void consumeSos(EventEnvelope event) {
+        if (event == null || !"alert.sos.triggered".equals(event.getEventType())) {
+            log.debug("Evento del tópico SOS sin notificación: type='{}'", event == null ? null : event.getEventType());
+            return;
+        }
+        if (event.getEventId() == null || event.getPayload() == null) {
+            throw new IllegalArgumentException("El evento SOS debe incluir eventId y payload");
+        }
+        JsonNode payload = event.getPayload();
+        UUID driverId = RecipientIdResolver.resolve(text(payload, "driverId"));
+        if (driverId == null) {
+            throw new IllegalArgumentException("El evento SOS no trae un driverId válido");
+        }
+        log.warn("HIGH PRIORITY EVENT received: SOS id='{}' driver='{}'", event.getEventId(), driverId);
+
+        String latitude = text(payload, "latitude");
+        String longitude = text(payload, "longitude");
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("driverName", orDash(text(payload, "driverName")));
+        vars.put("vehiclePlate", orDash(text(payload, "vehiclePlate")));
+        vars.put("latitude", latitude);
+        vars.put("longitude", longitude);
+        vars.put("loadId", orDash(text(payload, "loadId")));
+        vars.put("sosId", text(payload, "id"));
+        vars.put("mapsUrl", "https://www.openstreetmap.org/?mlat=" + latitude + "&mlon=" + longitude + "#map=16/" + latitude + "/" + longitude);
+
+        notificationService.processEventNotification(
+                driverId,
+                NotificationCategory.EMERGENCIA_SOS,
+                NotificationChannel.PUSH,
+                event.getEventId().toString(),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+    }
+
+    private static String text(JsonNode payload, String field) {
+        JsonNode value = payload.get(field);
+        return value == null || value.isNull() || value.asText().isBlank() ? null : value.asText();
+    }
+
+    private static String orDash(String value) {
+        return value == null ? "—" : value;
     }
 
     @KafkaListener(

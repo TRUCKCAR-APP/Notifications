@@ -45,6 +45,8 @@ app:
       load-events: truckcar.events.load-allocation
       assignment-notifications: truckcar.events.assignment-notifications
       restrictions: truckcar.events.road-restrictions
+      # Botón SOS (Community-Alerts): alta prioridad.
+      sos: ${TRUCKCAR_SOS_TOPIC:truckcar.events.sos}
   jwt:
     # Mismo secreto Base64 que User-Identity y api-gateway (JWT_SECRET: nombre heredado). Sin valor por defecto.
     secret: ${TRUCKCAR_JWT_SECRET:${JWT_SECRET:}}
