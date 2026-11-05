@@ -10,7 +10,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.polly.PollyClient;
@@ -50,8 +49,11 @@ public class PollyVoiceSynthesizer implements VoiceSynthesizer {
     @Value("${aws.polly.presigned-url-duration-hours:24}")
     private long presignedUrlDurationHours;
 
+    // Sin @Transactional: el error de Polly atravesaría el interceptor transaccional y marcaría como rollback-only la
+    // transacción de quien llama, aunque el fallback lo convierta en un resultado; NotificationServiceImpl no podría
+    // guardar FAILED (UnexpectedRollbackException, HTTP 500). Las escrituras de AudioCache usan la transacción de quien
+    // llama o la del repositorio.
     @Override
-    @Transactional
     @Retry(name = "pollyVoice", fallbackMethod = "fallbackSynthesize")
     @CircuitBreaker(name = "pollyVoice")
     public VoiceSynthesisResult synthesizeAndUpload(String text, String language) {
