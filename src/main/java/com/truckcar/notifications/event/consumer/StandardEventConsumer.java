@@ -12,6 +12,7 @@ import com.truckcar.notifications.model.NotificationChannel;
 import com.truckcar.notifications.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +30,10 @@ public class StandardEventConsumer {
 
     private final NotificationService notificationService;
     private final NotificationEventPublisher notificationEventPublisher;
+
+    /** Plazo para responder una propuesta (Load-Allocation TRUCKCAR_ASSIGNMENT_RESPONSE_TIMEOUT_MINUTES). */
+    @Value("${truckcar.assignment.response-timeout-minutes:5}")
+    private int responseTimeoutMinutes = 5;
 
     @KafkaListener(
             topics = "${app.kafka.topics.restrictions:truckcar.events.road-restrictions}",
@@ -104,6 +109,8 @@ public class StandardEventConsumer {
             return;
         }
         Map<String, Object> vars = loadVariables(payload, event);
+        vars.put("status", "publicada");
+        vars.put("location", vars.get("ruta"));
 
         notificationService.processEventNotification(
                 recipientUserId,
@@ -123,6 +130,9 @@ public class StandardEventConsumer {
         Map<String, Object> vars = loadVariables(payload, event);
         vars.put("driverName", text(payload, "assignedDriverName"));
         vars.put("vehiclePlate", text(payload, "assignedVehiclePlate"));
+        String driver = (String) vars.get("driverName");
+        vars.put("reason", driver == null ? "quedó asignada"
+                : "quedó asignada a " + driver + (vars.get("vehiclePlate") != null ? " (" + vars.get("vehiclePlate") + ")" : ""));
 
         notificationService.processEventNotification(
                 recipientUserId,
@@ -143,6 +153,8 @@ public class StandardEventConsumer {
         vars.put("matchingScore", number(payload, "matchingScore"));
         vars.put("driverName", text(payload, "driverName", "assignedDriverName"));
         vars.put("vehiclePlate", text(payload, "vehiclePlate", "assignedVehiclePlate"));
+        vars.put("reason", "se la propone el motor de asignación. Tiene " + responseTimeoutMinutes
+                + " minutos para aceptarla o rechazarla en la app");
 
         notificationService.processEventNotification(
                 recipientUserId,
@@ -202,7 +214,15 @@ public class StandardEventConsumer {
         vars.put("cargoDescription", text(payload, "cargoDescription"));
         vars.put("weightTons", number(payload, "weightTons"));
         vars.put("correlationId", event.getCorrelationId());
+        // Las plantillas de carga piden {{tripId}} y {{ruta}}: sin ellas el texto salía con huecos ("a la ruta .").
+        vars.put("tripId", vars.get("loadId"));
+        vars.put("ruta", route((String) vars.get("origin"), (String) vars.get("destination")));
         return vars;
+    }
+
+    private static String route(String origin, String destination) {
+        if (origin != null && destination != null) return origin + " → " + destination;
+        return origin != null ? origin : destination != null ? destination : "sin ruta registrada";
     }
 
     private String sourceEventId(EventEnvelope event) {
@@ -247,7 +267,8 @@ public class StandardEventConsumer {
         vars.put("route", event.getRoute());
         vars.put("origin", event.getOrigin());
         vars.put("destination", event.getDestination());
-        vars.put("reason", event.getReason());
+        vars.put("reason", event.getReason() == null || event.getReason().isBlank()
+                ? "fue reasignada" : "fue reasignada. Motivo: " + event.getReason());
 
         notificationService.processEventNotification(
                 event.getRecipientUserId(),
