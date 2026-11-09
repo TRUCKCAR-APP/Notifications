@@ -144,21 +144,45 @@ public class NotificationServiceImpl implements NotificationService {
                         .sentAt(notification.getSentAt())
                         .build());
             } else {
-                notification.setStatus(NotificationStatus.FAILED);
-                notification.setFailureReason(pushResult.errorReason());
-                notificationRepository.save(notification);
+                log.warn("PUSH delivery failed for user {}: {}. Triggering fallback to VOICE synthesis...",
+                        recipientUserId, pushResult.errorReason());
+                VoiceSynthesisResult voiceFallback = voiceSynthesizer.synthesizeAndUpload(payloadText, language);
 
-                eventPublisher.publishFailed(NotificationFailedEvent.builder()
-                        .notificationId(notification.getId())
-                        .recipientUserId(recipientUserId)
-                        .channel(channel)
-                        .category(category)
-                        .sourceEventId(sourceEventId)
-                        .sourceEventType(sourceEventType)
-                        .failureReason(pushResult.errorReason())
-                        .attempts(notification.getAttempts())
-                        .failedAt(Instant.now())
-                        .build());
+                if (voiceFallback.success()) {
+                    log.info("Voice fallback succeeded for user {}. Generated audioUrl: {}", recipientUserId, voiceFallback.audioUrl());
+                    notification.setStatus(NotificationStatus.SENT);
+                    notification.setAudioUrl(voiceFallback.audioUrl());
+                    notification.setSentAt(Instant.now());
+                    notification.setFailureReason("PUSH_FALLBACK_VOICE: Falló canal PUSH (" + pushResult.errorReason() + "), entregado por canal alterno de voz Polly");
+                    notificationRepository.save(notification);
+
+                    eventPublisher.publishSent(NotificationSentEvent.builder()
+                            .notificationId(notification.getId())
+                            .recipientUserId(recipientUserId)
+                            .channel(NotificationChannel.VOICE)
+                            .category(category)
+                            .sourceEventId(sourceEventId)
+                            .sourceEventType(sourceEventType)
+                            .audioUrl(voiceFallback.audioUrl())
+                            .sentAt(notification.getSentAt())
+                            .build());
+                } else {
+                    notification.setStatus(NotificationStatus.FAILED);
+                    notification.setFailureReason("PUSH_FALLBACK_FAILED: Falló PUSH (" + pushResult.errorReason() + ") y falló voz Polly (" + voiceFallback.errorReason() + ")");
+                    notificationRepository.save(notification);
+
+                    eventPublisher.publishFailed(NotificationFailedEvent.builder()
+                            .notificationId(notification.getId())
+                            .recipientUserId(recipientUserId)
+                            .channel(channel)
+                            .category(category)
+                            .sourceEventId(sourceEventId)
+                            .sourceEventType(sourceEventType)
+                            .failureReason(notification.getFailureReason())
+                            .attempts(notification.getAttempts())
+                            .failedAt(Instant.now())
+                            .build());
+                }
             }
 
         } else if (channel == NotificationChannel.VOICE) {

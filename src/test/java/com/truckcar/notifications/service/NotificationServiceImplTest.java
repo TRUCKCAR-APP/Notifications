@@ -173,4 +173,84 @@ class NotificationServiceImplTest {
 
         verify(eventPublisher, times(1)).publishSent(any());
     }
+
+    @Test
+    @DisplayName("Should execute VOICE fallback when PUSH delivery fails and succeed")
+    void shouldFallbackToVoiceWhenPushFails() {
+        UUID userId = UUID.randomUUID();
+        DirectNotificationSendRequest request = DirectNotificationSendRequest.builder()
+                .recipientUserId(userId)
+                .category(NotificationCategory.ALERTA_RUTA)
+                .channel(NotificationChannel.PUSH)
+                .language("es-CO")
+                .rawMessage("Alerta de desvío por cierre vial.")
+                .build();
+
+        when(notificationRepository.save(any(Notification.class)))
+                .thenAnswer(inv -> {
+                    Notification n = inv.getArgument(0);
+                    if (n.getId() == null) {
+                        n.setId(UUID.randomUUID());
+                    }
+                    return n;
+                });
+
+        when(pushNotifier.sendPush(eq(userId), anyString(), anyString(), any()))
+                .thenReturn(PushNotificationResult.failure("EndpointDisabled: Device token unregistered"));
+
+        when(voiceSynthesizer.synthesizeAndUpload(eq("Alerta de desvío por cierre vial."), eq("es-CO")))
+                .thenReturn(VoiceSynthesisResult.ok("https://s3.amazonaws.com/fallback-voice.mp3", "audio/es-CO/fallback.mp3", false));
+
+        NotificationResponse response = notificationService.sendDirect(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(response.getAudioUrl()).isEqualTo("https://s3.amazonaws.com/fallback-voice.mp3");
+        assertThat(response.getFailureReason()).contains("PUSH_FALLBACK_VOICE");
+
+        verify(pushNotifier, times(1)).sendPush(any(), any(), any(), any());
+        verify(voiceSynthesizer, times(1)).synthesizeAndUpload(anyString(), anyString());
+        verify(eventPublisher, times(1)).publishSent(any());
+        verify(eventPublisher, never()).publishFailed(any());
+    }
+
+    @Test
+    @DisplayName("Should mark FAILED when both PUSH and VOICE fallback fail")
+    void shouldMarkFailedWhenBothPushAndVoiceFallbackFail() {
+        UUID userId = UUID.randomUUID();
+        DirectNotificationSendRequest request = DirectNotificationSendRequest.builder()
+                .recipientUserId(userId)
+                .category(NotificationCategory.EMERGENCIA_SOS)
+                .channel(NotificationChannel.PUSH)
+                .language("es-CO")
+                .rawMessage("Emergencia en km 12.")
+                .build();
+
+        when(notificationRepository.save(any(Notification.class)))
+                .thenAnswer(inv -> {
+                    Notification n = inv.getArgument(0);
+                    if (n.getId() == null) {
+                        n.setId(UUID.randomUUID());
+                    }
+                    return n;
+                });
+
+        when(pushNotifier.sendPush(eq(userId), anyString(), anyString(), any()))
+                .thenReturn(PushNotificationResult.failure("SNS Service Unavailable"));
+
+        when(voiceSynthesizer.synthesizeAndUpload(anyString(), anyString()))
+                .thenReturn(VoiceSynthesisResult.failure("Polly Access Denied"));
+
+        NotificationResponse response = notificationService.sendDirect(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(response.getFailureReason()).contains("SNS Service Unavailable");
+        assertThat(response.getFailureReason()).contains("Polly Access Denied");
+
+        verify(pushNotifier, times(1)).sendPush(any(), any(), any(), any());
+        verify(voiceSynthesizer, times(1)).synthesizeAndUpload(anyString(), anyString());
+        verify(eventPublisher, never()).publishSent(any());
+        verify(eventPublisher, times(1)).publishFailed(any());
+    }
 }
