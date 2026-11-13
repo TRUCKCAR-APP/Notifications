@@ -52,6 +52,38 @@ class SosEventConsumerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void anSosWithTheLastKnownPositionSaysSoInTheMessage() throws Exception {
+        UUID driverId = UUID.randomUUID();
+        consumer.consumeSos(envelope("alert.sos.triggered", """
+                {"id": 13, "driverId": "%s", "latitude": 5.07, "longitude": -75.52,
+                 "locationSource": "LAST_KNOWN"}""".formatted(driverId)));
+
+        ArgumentCaptor<Map<String, Object>> vars = ArgumentCaptor.forClass(Map.class);
+        verify(notifications).processEventNotification(eq(driverId), any(), any(), anyString(), anyString(),
+                anyString(), vars.capture(), isNull());
+        assertThat(vars.getValue()).containsEntry("locationSource", "LAST_KNOWN")
+                .containsEntry("location", "sin GPS; última posición conocida 5.07, -75.52");
+        assertThat((String) vars.getValue().get("mapsUrl")).contains("mlat=5.07");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void anSosWithoutAnyPositionStillNotifiesWithoutABrokenMapLink() throws Exception {
+        UUID driverId = UUID.randomUUID();
+        consumer.consumeSos(envelope("alert.sos.triggered", """
+                {"id": 14, "driverId": "%s", "latitude": null, "longitude": null,
+                 "locationSource": "UNKNOWN"}""".formatted(driverId)));
+
+        ArgumentCaptor<Map<String, Object>> vars = ArgumentCaptor.forClass(Map.class);
+        verify(notifications).processEventNotification(eq(driverId), eq(NotificationCategory.EMERGENCIA_SOS), any(),
+                anyString(), anyString(), anyString(), vars.capture(), isNull());
+        assertThat(vars.getValue()).containsEntry("location", "sin ubicación conocida: contacte al conductor")
+                .containsEntry("latitude", "desconocida").containsEntry("mapsUrl", "—");
+        assertThat(vars.getValue().values()).noneMatch(value -> String.valueOf(value).contains("null"));
+    }
+
+    @Test
     void attendingASosDoesNotNotify() throws Exception {
         consumer.consumeSos(envelope("alert.sos.acknowledged", "{\"id\": 12}"));
 
