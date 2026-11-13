@@ -79,16 +79,32 @@ public class HighPriorityEventConsumer {
         }
         log.warn("HIGH PRIORITY EVENT received: SOS id='{}' driver='{}'", event.getEventId(), driverId);
 
+        // Un SOS puede llegar sin GPS: locationSource dice si la posición es del dispositivo (DEVICE_GPS), la última
+        // conocida en fleets-drivers (LAST_KNOWN) o ninguna (UNKNOWN, sin coordenadas). Eventos anteriores no lo traen.
         String latitude = text(payload, "latitude");
         String longitude = text(payload, "longitude");
+        boolean hasPosition = latitude != null && longitude != null;
+        String source = text(payload, "locationSource");
+        String location;
+        if (!hasPosition) {
+            location = "sin ubicación conocida: contacte al conductor";
+        } else if ("LAST_KNOWN".equals(source)) {
+            location = "sin GPS; última posición conocida " + latitude + ", " + longitude;
+        } else {
+            location = "en " + latitude + ", " + longitude;
+        }
         Map<String, Object> vars = new HashMap<>();
         vars.put("driverName", orDash(text(payload, "driverName")));
         vars.put("vehiclePlate", orDash(text(payload, "vehiclePlate")));
-        vars.put("latitude", latitude);
-        vars.put("longitude", longitude);
+        vars.put("latitude", hasPosition ? latitude : "desconocida");
+        vars.put("longitude", hasPosition ? longitude : "desconocida");
+        vars.put("location", location);
+        vars.put("locationSource", source == null ? (hasPosition ? "DEVICE_GPS" : "UNKNOWN") : source);
         vars.put("loadId", orDash(text(payload, "loadId")));
         vars.put("sosId", text(payload, "id"));
-        vars.put("mapsUrl", "https://www.openstreetmap.org/?mlat=" + latitude + "&mlon=" + longitude + "#map=16/" + latitude + "/" + longitude);
+        vars.put("mapsUrl", hasPosition
+                ? "https://www.openstreetmap.org/?mlat=" + latitude + "&mlon=" + longitude + "#map=16/" + latitude + "/" + longitude
+                : "—");
 
         notificationService.processEventNotification(
                 driverId,
