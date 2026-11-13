@@ -63,13 +63,28 @@ class LoadEventTextTest {
     }
 
     @Test
-    void anAssignmentNamesTheDriverAndPlate() throws Exception {
-        consumer.consumeLoadEvent(envelope("load.assigned", """
-                {"loadId": 12, "recipientUserId": "%s", "originCity": "Bogotá", "destinationCity": "Tunja",
-                 "assignedDriverName": "Andrés Rojas", "assignedVehiclePlate": "DEM-410"}""".formatted(UUID.randomUUID())));
+    void anAcceptedProposalTellsTheGeneratorWhoCarriesTheLoad() throws Exception {
+        UUID generatorId = UUID.randomUUID();
+        consumer.consumeLoadEvent(envelope("assignment.accepted", """
+                {"loadId": 12, "generatorCompanyId": "%s", "assignedDriverId": "%s", "originCity": "Bogotá",
+                 "destinationCity": "Tunja", "assignedDriverName": "Andrés Rojas", "assignedVehiclePlate": "DEM-410"}"""
+                .formatted(generatorId, UUID.randomUUID())));
 
+        ArgumentCaptor<UUID> recipient = ArgumentCaptor.forClass(UUID.class);
+        verify(notifications).processEventNotification(recipient.capture(), eq(NotificationCategory.REASIGNACION_CARGA),
+                eq(NotificationChannel.PUSH), anyString(), eq("assignment.accepted"), eq("es-CO"), any(), any());
+        assertThat(recipient.getValue()).as("se avisa al generador, no al conductor que aceptó").isEqualTo(generatorId);
         assertThat(resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA)))
-                .isEqualTo("Carga 12 (Bogotá → Tunja): quedó asignada a Andrés Rojas (DEM-410).");
+                .isEqualTo("Carga 12 (Bogotá → Tunja): la aceptó Andrés Rojas (DEM-410).");
+    }
+
+    /** Load-Allocation nunca emite load.assigned: ya no genera ninguna notificación. */
+    @Test
+    void theNeverEmittedLoadAssignedEventIsIgnored() throws Exception {
+        consumer.consumeLoadEvent(envelope("load.assigned", """
+                {"loadId": 12, "recipientUserId": "%s"}""".formatted(UUID.randomUUID())));
+
+        org.mockito.Mockito.verifyNoInteractions(notifications);
     }
 
     @Test
