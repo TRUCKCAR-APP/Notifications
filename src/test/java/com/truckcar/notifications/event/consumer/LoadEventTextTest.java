@@ -137,6 +137,29 @@ class LoadEventTextTest {
     }
 
     @Test
+    void aDriverWhoseAcceptedLoadWasReassignedIsToldNotToPickItUp() throws Exception {
+        UUID previousDriver = UUID.randomUUID();
+        consumer.consumeLoadEvent(envelope("assignment.revoked", """
+                {"loadId": 12, "loadStatus": "AVAILABLE", "assignmentStatus": "ACCEPTED", "assignedDriverId": "%s",
+                 "originCity": "Bogotá", "destinationCity": "Tunja"}""".formatted(previousDriver)));
+
+        ArgumentCaptor<UUID> recipient = ArgumentCaptor.forClass(UUID.class);
+        verify(notifications).processEventNotification(recipient.capture(), eq(NotificationCategory.REASIGNACION_CARGA),
+                eq(NotificationChannel.PUSH), anyString(), eq("assignment.revoked"), eq("es-CO"), any(), any());
+        assertThat(recipient.getValue()).isEqualTo(previousDriver);
+        assertThat(resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA)))
+                .isEqualTo("Carga 12 (Bogotá → Tunja): la torre de control se la asignó a otro conductor y ya no debe atenderla.");
+    }
+
+    @Test
+    void aRevocationWithoutDriverIsIgnored() throws Exception {
+        consumer.consumeLoadEvent(envelope("assignment.revoked", """
+                {"loadId": 12, "assignedDriverId": null}"""));
+
+        org.mockito.Mockito.verifyNoInteractions(notifications);
+    }
+
+    @Test
     void aLoadWithoutCitiesStillReadsAsASentence() throws Exception {
         consumer.consumeLoadEvent(envelope("assignment.proposed", """
                 {"loadId": 7, "driverId": "%s"}""".formatted(UUID.randomUUID())));
