@@ -98,6 +98,45 @@ class LoadEventTextTest {
     }
 
     @Test
+    void aCancelledLoadTellsTheDriverWhoHadItAndWhy() throws Exception {
+        UUID driverId = UUID.randomUUID();
+        consumer.consumeLoadEvent(envelope("load.cancelled", """
+                {"loadId": 12, "loadStatus": "CANCELLED", "assignmentStatus": "ACCEPTED", "assignedDriverId": "%s",
+                 "generatorCompanyId": "%s", "originCity": "Bogotá", "destinationCity": "Tunja",
+                 "cancellationReason": "El cliente canceló el pedido."}""".formatted(driverId, UUID.randomUUID())));
+
+        ArgumentCaptor<UUID> recipient = ArgumentCaptor.forClass(UUID.class);
+        verify(notifications).processEventNotification(recipient.capture(), eq(NotificationCategory.REASIGNACION_CARGA),
+                eq(NotificationChannel.PUSH), anyString(), eq("load.cancelled"), eq("es-CO"), any(), any());
+        assertThat(recipient.getValue()).as("se avisa al conductor, no al generador que canceló").isEqualTo(driverId);
+        assertThat(resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA)))
+                .isEqualTo("Carga 12 (Bogotá → Tunja): fue cancelada y ya no debe atenderla. "
+                        + "Motivo: El cliente canceló el pedido.");
+    }
+
+    @Test
+    void aCancelledProposalWithoutReasonStillReadsAsASentence() throws Exception {
+        consumer.consumeLoadEvent(envelope("load.cancelled", """
+                {"loadId": 7, "assignmentStatus": "NOTIFIED", "assignedDriverId": "%s"}""".formatted(UUID.randomUUID())));
+
+        assertThat(resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA)))
+                .isEqualTo("Carga 7 (sin ruta registrada): fue cancelada y ya no debe atenderla.");
+    }
+
+    /** Nadie la tenía, o el conductor ya la había rechazado o la dejó vencer: no hay a quién avisar. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"", "REJECTED", "TIMEOUT", "UNASSIGNED_NO_DRIVERS"})
+    void aCancelledLoadNobodyHeldDoesNotNotify(String assignmentStatus) throws Exception {
+        String status = assignmentStatus.isEmpty() ? "null" : "\"" + assignmentStatus + "\"";
+        consumer.consumeLoadEvent(envelope("load.cancelled", """
+                {"loadId": 7, "assignmentStatus": %s, "assignedDriverId": "%s"}""".formatted(status, UUID.randomUUID())));
+        consumer.consumeLoadEvent(envelope("load.cancelled", """
+                {"loadId": 8, "assignmentStatus": "ACCEPTED", "assignedDriverId": null}"""));
+
+        org.mockito.Mockito.verifyNoInteractions(notifications);
+    }
+
+    @Test
     void aLoadWithoutCitiesStillReadsAsASentence() throws Exception {
         consumer.consumeLoadEvent(envelope("assignment.proposed", """
                 {"loadId": 7, "driverId": "%s"}""".formatted(UUID.randomUUID())));
