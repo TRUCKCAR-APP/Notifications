@@ -28,6 +28,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StandardEventConsumer {
 
+    /** Estados de la asignación en que el conductor cuenta con la carga: propuesta vigente o aceptada. */
+    private static final java.util.Set<String> DRIVER_HOLDS_LOAD = java.util.Set.of("PROPOSED", "NOTIFIED", "ACCEPTED");
+
     private final NotificationService notificationService;
     private final NotificationEventPublisher notificationEventPublisher;
 
@@ -93,6 +96,8 @@ public class StandardEventConsumer {
             notifyAssignmentAccepted(event);
         } else if ("assignment.proposed".equals(eventType)) {
             notifyAssignmentProposed(event);
+        } else if ("load.cancelled".equals(eventType)) {
+            notifyLoadCancelled(event);
         } else {
             log.debug("Evento de carga no notificable ignorado: type='{}', eventId='{}'",
                     eventType, event.getEventId());
@@ -153,6 +158,46 @@ public class StandardEventConsumer {
                 vars,
                 null
         );
+    }
+
+    /**
+     * La carga se canceló (load.cancelled): se avisa al conductor que la tenía propuesta o aceptada, para que no salga a
+     * recogerla. Load-Allocation emite el evento con el conductor y el estado de la asignación de ese momento, antes de
+     * limpiarlos. Sin conductor (nadie la tenía) o con la propuesta ya rechazada o vencida, no hay a quién avisar.
+     */
+    private void notifyLoadCancelled(EventEnvelope event) {
+        JsonNode payload = event.getPayload();
+        String assignmentStatus = text(payload, "assignmentStatus");
+        UUID driverId = RecipientIdResolver.resolve(text(payload, "assignedDriverId"));
+        if (driverId == null || assignmentStatus == null || !DRIVER_HOLDS_LOAD.contains(assignmentStatus)) {
+            log.debug("load.cancelled sin conductor que avisar: eventId='{}', assignmentStatus='{}'",
+                    event.getEventId(), assignmentStatus);
+            return;
+        }
+        Map<String, Object> vars = loadVariables(payload, event);
+        String reason = text(payload, "cancellationReason");
+        vars.put("reason", "fue cancelada y ya no debe atenderla"
+                + (reason == null ? "" : ". Motivo: " + sentenceBody(reason)));
+
+        notificationService.processEventNotification(
+                driverId,
+                NotificationCategory.REASIGNACION_CARGA,
+                NotificationChannel.PUSH,
+                sourceEventId(event),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+    }
+
+    /** La plantilla pone el punto final: se quita el del motivo para no terminar en "..". */
+    private static String sentenceBody(String text) {
+        String trimmed = text.strip();
+        while (trimmed.endsWith(".")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1).stripTrailing();
+        }
+        return trimmed.length() > 300 ? trimmed.substring(0, 300) + "…" : trimmed;
     }
 
     private void notifyAssignmentProposed(EventEnvelope event) {
