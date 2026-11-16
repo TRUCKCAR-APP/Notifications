@@ -54,12 +54,37 @@ class LoadEventTextTest {
         UUID driverId = UUID.randomUUID();
         consumer.consumeLoadEvent(envelope("assignment.proposed", """
                 {"loadId": 12, "driverId": "%s", "originCity": "Bogotá", "destinationCity": "Tunja",
-                 "weightTons": 25, "matchingScore": 87.5, "driverName": "Andrés Rojas"}""".formatted(driverId)));
+                 "weightTons": 25, "matchingScore": 87.5, "driverName": "Andrés Rojas", "proposedBy": "MOTOR"}"""
+                .formatted(driverId)));
 
         String text = resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA));
 
         assertThat(text).isEqualTo("Carga 12 (Bogotá → Tunja): se la propone el motor de asignación. "
                 + "Tiene 5 minutos para aceptarla o rechazarla en la app.");
+    }
+
+    /** Lote 4: una asignación o reasignación de la torre no se le presenta al conductor como del motor. */
+    @Test
+    void aProposalFromTheControlTowerSaysSo() throws Exception {
+        consumer.consumeLoadEvent(envelope("assignment.proposed", """
+                {"loadId": 12, "assignedDriverId": "%s", "originCity": "Bogotá", "destinationCity": "Tunja",
+                 "proposedBy": "TORRE"}""".formatted(UUID.randomUUID())));
+
+        assertThat(resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA)))
+                .isEqualTo("Carga 12 (Bogotá → Tunja): se la asigna la torre de control. "
+                        + "Tiene 5 minutos para aceptarla o rechazarla en la app.");
+    }
+
+    @Test
+    void aProposalWithoutOriginDoesNotClaimWhoMadeIt() throws Exception {
+        consumer.consumeLoadEvent(envelope("assignment.proposed", """
+                {"loadId": 12, "assignedDriverId": "%s", "originCity": "Bogotá", "destinationCity": "Tunja"}"""
+                .formatted(UUID.randomUUID())));
+
+        assertThat(resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA)))
+                .isEqualTo("Carga 12 (Bogotá → Tunja): tiene una nueva propuesta de carga. "
+                        + "Tiene 5 minutos para aceptarla o rechazarla en la app.")
+                .doesNotContain("motor");
     }
 
     @Test
@@ -162,7 +187,7 @@ class LoadEventTextTest {
     @Test
     void aLoadWithoutCitiesStillReadsAsASentence() throws Exception {
         consumer.consumeLoadEvent(envelope("assignment.proposed", """
-                {"loadId": 7, "driverId": "%s"}""".formatted(UUID.randomUUID())));
+                {"loadId": 7, "driverId": "%s", "proposedBy": "MOTOR"}""".formatted(UUID.randomUUID())));
 
         assertThat(resolver.resolve(LOAD_TEMPLATE, varsFor(NotificationCategory.REASIGNACION_CARGA)))
                 .startsWith("Carga 7 (sin ruta registrada): se la propone");
