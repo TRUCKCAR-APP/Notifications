@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: ms-notifications
+  # Lector tolerante explícito (Spring Boot ya lo trae): un campo nuevo en un evento no lo manda al DLT.
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
 
   datasource:
     # Fuera de Docker (IDE/tests) la conexión es directa y el esquema va en currentSchema. En Docker se pasa por

@@ -23,11 +23,24 @@ class JsonSecurityErrorHandlerTest {
                 new AccessDeniedException("Access Denied"));
 
         assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getContentType()).startsWith("application/problem+json");
+        // Sin Accept problem+json: application/json, que es lo que la PWA interpreta como JSON.
+        assertThat(response.getContentType()).startsWith("application/json");
         JsonNode body = objectMapper.readTree(response.getContentAsByteArray());
         assertThat(body.get("status").asInt()).isEqualTo(403);
         assertThat(body.get("title").asText()).isEqualTo("Operación no permitida");
         assertThat(body.get("detail").asText()).isNotBlank();
+        assertThat(body.get("message").asText()).isEqualTo(body.get("detail").asText());
+        assertThat(body.get("instance").asText()).isEqualTo("/api/v1/notifications/send");
+    }
+
+    @Test
+    void problemJsonOnlyForWhoAsksForIt() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/notifications/user/x");
+        request.addHeader("Accept", "application/problem+json");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        handler.commence(request, response, new InsufficientAuthenticationException("x"));
+
+        assertThat(response.getContentType()).startsWith("application/problem+json");
     }
 
     @Test

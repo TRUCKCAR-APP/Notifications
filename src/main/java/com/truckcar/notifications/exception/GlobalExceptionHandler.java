@@ -2,121 +2,131 @@ package com.truckcar.notifications.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.net.URI;
-import java.time.Instant;
-import java.util.HashMap;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.TreeMap;
 
+/**
+ * Errores en formato RFC 7807 (ProblemDetail): type, title, status, detail e instance.
+ * <p>
+ * Se conservan como propiedades los campos de antes (message, error, details, timestamp) para no romper a los
+ * clientes; un 400 de validación suma errors[] (field, message). Content-Type: application/problem+json solo para quien
+ * lo pide en Accept; application/json para el resto (la PWA decide por ese tipo si interpreta el cuerpo como JSON).
+ */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    static final String TYPE_BASE = "https://truckcar.co/errors/";
+
     @ExceptionHandler(ResourceNotFoundException.class)
-    public ProblemDetail handleResourceNotFound(ResourceNotFoundException ex) {
+    public ResponseEntity<ProblemDetail> handleResourceNotFound(ResourceNotFoundException ex) {
         log.warn("Resource not found: {}", ex.getMessage());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
-        problem.setTitle("Recurso no encontrado");
-        problem.setType(URI.create("https://truckcar.com/errors/not-found"));
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
+        return problem(HttpStatus.NOT_FOUND, "not-found", "Recurso no encontrado", ex.getMessage());
     }
 
     @ExceptionHandler(InvalidApiKeyException.class)
-    public ProblemDetail handleInvalidApiKey(InvalidApiKeyException ex) {
+    public ResponseEntity<ProblemDetail> handleInvalidApiKey(InvalidApiKeyException ex) {
         log.warn("Unauthorized API Key access: {}", ex.getMessage());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
-        problem.setTitle("API Key inválida");
-        problem.setType(URI.create("https://truckcar.com/errors/unauthorized"));
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
+        return problem(HttpStatus.UNAUTHORIZED, "unauthorized", "API Key inválida", ex.getMessage());
     }
 
     @ExceptionHandler(NotificationDeliveryException.class)
-    public ProblemDetail handleNotificationDelivery(NotificationDeliveryException ex) {
+    public ResponseEntity<ProblemDetail> handleNotificationDelivery(NotificationDeliveryException ex) {
         log.error("Notification delivery failure: {}", ex.getMessage(), ex);
         // El detalle de AWS queda en el log: no se expone al cliente.
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY,
+        return problem(HttpStatus.BAD_GATEWAY, "delivery-error", "Error de entrega de la notificación",
                 "No se pudo entregar la notificación por el canal solicitado");
-        problem.setTitle("Error de entrega de la notificación");
-        problem.setType(URI.create("https://truckcar.com/errors/delivery-error"));
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
-    }
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ProblemDetail handleValidationErrors(MethodArgumentNotValidException ex) {
-        Map<String, String> fieldErrors = new HashMap<>();
-        for (FieldError error : ex.getBindingResult().getFieldErrors()) {
-            fieldErrors.put(error.getField(), error.getDefaultMessage());
-        }
-
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
-                fieldErrors.isEmpty() ? "La solicitud tiene datos inválidos"
-                        : String.join("; ", new TreeMap<>(fieldErrors).values()));
-        problem.setTitle("Validación de datos fallida");
-        problem.setType(URI.create("https://truckcar.com/errors/validation-error"));
-        problem.setProperty("invalidParams", fieldErrors);
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
+    public ResponseEntity<ProblemDetail> handleAccessDenied(AccessDeniedException ex) {
         log.warn("Access denied: {}", ex.getMessage());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
-        problem.setTitle("Operación no permitida");
-        problem.setType(URI.create("https://truckcar.com/errors/forbidden"));
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
+        return problem(HttpStatus.FORBIDDEN, "forbidden", "Operación no permitida", "No tiene permisos para esta operación");
     }
 
-    /** Malformed JSON, invalid UTF-8 or a value of the wrong type (unknown enum): a client error, not a 500. */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ProblemDetail> handleValidationErrors(MethodArgumentNotValidException ex) {
+        return validationProblem("Validación de datos fallida", ex);
+    }
+
+    /** JSON mal formado, UTF-8 inválido o un valor que no corresponde al tipo (enum desconocido): error del cliente. */
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ProblemDetail handleUnreadableBody(HttpMessageNotReadableException ex) {
-        log.debug("Unreadable request body: {}", ex.getMessage());
-        // The parser detail stays in the log: it may echo parts of the body and internal class names.
-        return badRequest("El cuerpo debe ser JSON válido en UTF-8 con los campos y valores esperados");
+    public ResponseEntity<ProblemDetail> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        log.debug("Cuerpo ilegible: {}", ex.getMessage());
+        // Sin el detalle del parser en la respuesta: puede incluir fragmentos del cuerpo y nombres de clases internas.
+        return problem(HttpStatus.BAD_REQUEST, "bad-request", "Solicitud inválida",
+                "El cuerpo debe ser JSON válido en UTF-8 con los campos y valores esperados");
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        return badRequest(ex.getName() + ": valor con un tipo incorrecto");
-    }
-
-    private static ProblemDetail badRequest(String detail) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
-        problem.setTitle("Solicitud inválida");
-        problem.setType(URI.create("https://truckcar.com/errors/bad-request"));
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
+    public ResponseEntity<ProblemDetail> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return problem(HttpStatus.BAD_REQUEST, "bad-request", "Solicitud inválida",
+                ex.getName() + ": valor con un tipo incorrecto");
     }
 
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleGeneralException(Exception ex) {
-        // Spring MVC exceptions that carry their own status (405, 415, missing parameter...): this catch-all would
-        // otherwise turn them into a 500 before the default resolver sees them.
+    public ResponseEntity<ProblemDetail> handleGeneral(Exception ex) {
+        // Excepciones de Spring MVC con su propio estado (405, 415, parámetro faltante...): este handler genérico las
+        // capturaría antes que el resolver por defecto y las convertiría en 500.
         if (ex instanceof ErrorResponse errorResponse && errorResponse.getStatusCode().is4xxClientError()) {
-            ProblemDetail problem = errorResponse.getBody();
-            problem.setTitle("Solicitud inválida");
-            problem.setProperty("timestamp", Instant.now());
-            return problem;
+            return problem(errorResponse.getStatusCode(), "bad-request", "Solicitud inválida",
+                    errorResponse.getBody().getDetail());
         }
         log.error("Unhandled exception: {}", ex.getMessage(), ex);
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo procesar la solicitud de notificaciones");
-        problem.setTitle("Error interno");
-        problem.setType(URI.create("https://truckcar.com/errors/internal"));
-        problem.setProperty("timestamp", Instant.now());
-        return problem;
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal-error", "Error interno",
+                "No se pudo procesar la solicitud de notificaciones");
+    }
+
+    static ResponseEntity<ProblemDetail> validationProblem(String title, MethodArgumentNotValidException ex) {
+        Map<String, String> fieldErrors = new TreeMap<>();
+        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
+            fieldErrors.putIfAbsent(fe.getField(), fe.getDefaultMessage());
+        }
+        String detail = fieldErrors.isEmpty() ? "La solicitud tiene datos inválidos" : String.join("; ", fieldErrors.values());
+        ResponseEntity<ProblemDetail> response = problem(HttpStatus.BAD_REQUEST, "validation-error", title, detail);
+        response.getBody().setProperty("details", fieldErrors);
+        response.getBody().setProperty("invalidParams", fieldErrors);
+        response.getBody().setProperty("errors", fieldErrors.entrySet().stream()
+                .map(e -> Map.of("field", e.getKey(), "message", e.getValue())).toList());
+        return response;
+    }
+
+    /** ProblemDetail con los campos de antes (message, error, timestamp) para no romper a los clientes actuales. */
+    static ResponseEntity<ProblemDetail> problem(HttpStatusCode status, String type, String title, String detail) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setType(URI.create(TYPE_BASE + type));
+        problem.setTitle(title);
+        problem.setProperty("error", title);
+        problem.setProperty("message", detail);
+        problem.setProperty("timestamp", LocalDateTime.now());
+        return ResponseEntity.status(status).contentType(negotiatedType()).body(problem);
+    }
+
+    /** application/problem+json solo para quien lo pide en Accept: Spring lo usaría también ante application/json. */
+    private static MediaType negotiatedType() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            String accept = attributes.getRequest().getHeader("Accept");
+            if (accept != null && accept.contains(MediaType.APPLICATION_PROBLEM_JSON_VALUE)) {
+                return MediaType.APPLICATION_PROBLEM_JSON;
+            }
+        }
+        return MediaType.APPLICATION_JSON;
     }
 }
