@@ -98,6 +98,8 @@ public class StandardEventConsumer {
             notifyAssignmentProposed(event);
         } else if ("load.cancelled".equals(eventType)) {
             notifyLoadCancelled(event);
+        } else if ("assignment.revoked".equals(eventType)) {
+            notifyAssignmentRevoked(event);
         } else {
             log.debug("Evento de carga no notificable ignorado: type='{}', eventId='{}'",
                     eventType, event.getEventId());
@@ -178,6 +180,33 @@ public class StandardEventConsumer {
         String reason = text(payload, "cancellationReason");
         vars.put("reason", "fue cancelada y ya no debe atenderla"
                 + (reason == null ? "" : ". Motivo: " + sentenceBody(reason)));
+
+        notificationService.processEventNotification(
+                driverId,
+                NotificationCategory.REASIGNACION_CARGA,
+                NotificationChannel.PUSH,
+                sourceEventId(event),
+                event.getEventType(),
+                "es-CO",
+                vars,
+                null
+        );
+    }
+
+    /**
+     * La torre de control le quitó la carga aceptada a su conductor para dársela a otro (assignment.revoked, lo emite
+     * Load-Allocation en PATCH /loads/{id}/reassign con el conductor anterior todavía en el payload): se le avisa para
+     * que no salga a recogerla. Al nuevo conductor le llega después la propuesta como siempre (assignment.proposed).
+     */
+    private void notifyAssignmentRevoked(EventEnvelope event) {
+        JsonNode payload = event.getPayload();
+        UUID driverId = RecipientIdResolver.resolve(text(payload, "assignedDriverId"));
+        if (driverId == null) {
+            log.warn("assignment.revoked sin conductor resoluble; no se notifica: eventId='{}'", event.getEventId());
+            return;
+        }
+        Map<String, Object> vars = loadVariables(payload, event);
+        vars.put("reason", "la torre de control se la asignó a otro conductor y ya no debe atenderla");
 
         notificationService.processEventNotification(
                 driverId,
