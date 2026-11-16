@@ -220,6 +220,20 @@ public class StandardEventConsumer {
         );
     }
 
+    /**
+     * Quién propone la carga, según proposedBy de Load-Allocation: la torre en una asignación o reasignación manual, el
+     * motor en las automáticas. Un evento sin el campo (versión anterior de Load-Allocation) no afirma ninguno.
+     */
+    private static String proposer(String proposedBy) {
+        if ("TORRE".equals(proposedBy)) {
+            return "se la asigna la torre de control";
+        }
+        if ("MOTOR".equals(proposedBy)) {
+            return "se la propone el motor de asignación";
+        }
+        return "tiene una nueva propuesta de carga";
+    }
+
     /** La plantilla pone el punto final: se quita el del motivo para no terminar en "..". */
     private static String sentenceBody(String text) {
         String trimmed = text.strip();
@@ -236,7 +250,7 @@ public class StandardEventConsumer {
         vars.put("matchingScore", number(payload, "matchingScore"));
         vars.put("driverName", text(payload, "driverName", "assignedDriverName"));
         vars.put("vehiclePlate", text(payload, "vehiclePlate", "assignedVehiclePlate"));
-        vars.put("reason", "se la propone el motor de asignación. Tiene " + responseTimeoutMinutes
+        vars.put("reason", proposer(text(payload, "proposedBy")) + ". Tiene " + responseTimeoutMinutes
                 + " minutos para aceptarla o rechazarla en la app");
 
         notificationService.processEventNotification(
