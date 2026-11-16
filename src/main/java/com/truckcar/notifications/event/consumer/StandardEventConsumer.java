@@ -89,8 +89,8 @@ public class StandardEventConsumer {
         String eventType = event.getEventType();
         if ("load.published".equals(eventType)) {
             notifyLoadPublished(event);
-        } else if ("load.assigned".equals(eventType)) {
-            notifyLoadAssigned(event);
+        } else if ("assignment.accepted".equals(eventType)) {
+            notifyAssignmentAccepted(event);
         } else if ("assignment.proposed".equals(eventType)) {
             notifyAssignmentProposed(event);
         } else {
@@ -124,15 +124,24 @@ public class StandardEventConsumer {
         );
     }
 
-    private void notifyLoadAssigned(EventEnvelope event) {
+    /**
+     * El conductor aceptó la propuesta (assignment.accepted, lo emite Load-Allocation al pasar a ASSIGNED): se avisa a
+     * la empresa generadora qué conductor y qué vehículo llevan su carga. Antes esta rama escuchaba load.assigned, un
+     * evento que Load-Allocation nunca emite, así que el generador no se enteraba.
+     */
+    private void notifyAssignmentAccepted(EventEnvelope event) {
         JsonNode payload = event.getPayload();
-        UUID recipientUserId = recipientUserId(payload);
+        UUID recipientUserId = RecipientIdResolver.resolve(text(payload, "recipientUserId", "generatorCompanyId"));
+        if (recipientUserId == null) {
+            log.warn("assignment.accepted sin generador resoluble; no se notifica: eventId='{}'", event.getEventId());
+            return;
+        }
         Map<String, Object> vars = loadVariables(payload, event);
         vars.put("driverName", text(payload, "assignedDriverName"));
         vars.put("vehiclePlate", text(payload, "assignedVehiclePlate"));
         String driver = (String) vars.get("driverName");
-        vars.put("reason", driver == null ? "quedó asignada"
-                : "quedó asignada a " + driver + (vars.get("vehiclePlate") != null ? " (" + vars.get("vehiclePlate") + ")" : ""));
+        vars.put("reason", driver == null ? "un conductor la aceptó"
+                : "la aceptó " + driver + (vars.get("vehiclePlate") != null ? " (" + vars.get("vehiclePlate") + ")" : ""));
 
         notificationService.processEventNotification(
                 recipientUserId,
