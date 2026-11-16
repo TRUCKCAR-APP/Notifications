@@ -1,6 +1,7 @@
 package com.truckcar.notifications.config;
 
 import com.truckcar.notifications.security.ApiKeyAuthenticationFilter;
+import com.truckcar.notifications.security.JsonSecurityErrorHandler;
 import com.truckcar.notifications.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -22,6 +23,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ApiKeyAuthenticationFilter apiKeyAuthenticationFilter;
+    private final JsonSecurityErrorHandler jsonSecurityErrorHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -29,6 +31,10 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // 401/403 de la cadena de seguridad con cuerpo JSON (por defecto salen vacíos).
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jsonSecurityErrorHandler)
+                        .accessDeniedHandler(jsonSecurityErrorHandler))
                 .authorizeHttpRequests(auth -> auth
                         // Public actuator & openapi
                         .requestMatchers(

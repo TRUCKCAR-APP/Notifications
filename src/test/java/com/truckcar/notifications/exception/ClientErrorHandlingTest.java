@@ -18,6 +18,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Errores del cliente (cuerpo ilegible, tipos, media type) responden 4xx con el handler real, nunca 500. */
@@ -46,6 +47,8 @@ class ClientErrorHandlingTest {
     void malformedJsonIsABadRequestWithoutEchoingTheBody() throws Exception {
         mvc.perform(post("/probe").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"clave-secreta\",\"day\":"))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Solicitud inválida"))
+                .andExpect(jsonPath("$.detail").value("El cuerpo debe ser JSON válido en UTF-8 con los campos y valores esperados"))
                 .andExpect(content().string(not(containsString("clave-secreta"))));
     }
 
@@ -64,7 +67,8 @@ class ClientErrorHandlingTest {
 
     @Test
     void wrongOrMissingParameterIsABadRequest() throws Exception {
-        mvc.perform(get("/probe").param("page", "uno")).andExpect(status().isBadRequest());
+        mvc.perform(get("/probe").param("page", "uno")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("page: valor con un tipo incorrecto"));
         mvc.perform(get("/probe")).andExpect(status().isBadRequest());
     }
 

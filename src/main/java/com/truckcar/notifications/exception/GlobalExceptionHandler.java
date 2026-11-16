@@ -16,6 +16,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 
 @Slf4j
 @RestControllerAdvice
@@ -25,7 +26,7 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleResourceNotFound(ResourceNotFoundException ex) {
         log.warn("Resource not found: {}", ex.getMessage());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
-        problem.setTitle("Resource Not Found");
+        problem.setTitle("Recurso no encontrado");
         problem.setType(URI.create("https://truckcar.com/errors/not-found"));
         problem.setProperty("timestamp", Instant.now());
         return problem;
@@ -35,7 +36,7 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleInvalidApiKey(InvalidApiKeyException ex) {
         log.warn("Unauthorized API Key access: {}", ex.getMessage());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
-        problem.setTitle("Invalid API Key");
+        problem.setTitle("API Key inválida");
         problem.setType(URI.create("https://truckcar.com/errors/unauthorized"));
         problem.setProperty("timestamp", Instant.now());
         return problem;
@@ -44,8 +45,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NotificationDeliveryException.class)
     public ProblemDetail handleNotificationDelivery(NotificationDeliveryException ex) {
         log.error("Notification delivery failure: {}", ex.getMessage(), ex);
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, ex.getMessage());
-        problem.setTitle("Notification Delivery Error");
+        // El detalle de AWS queda en el log: no se expone al cliente.
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY,
+                "No se pudo entregar la notificación por el canal solicitado");
+        problem.setTitle("Error de entrega de la notificación");
         problem.setType(URI.create("https://truckcar.com/errors/delivery-error"));
         problem.setProperty("timestamp", Instant.now());
         return problem;
@@ -58,8 +61,10 @@ public class GlobalExceptionHandler {
             fieldErrors.put(error.getField(), error.getDefaultMessage());
         }
 
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
-        problem.setTitle("Bad Request");
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                fieldErrors.isEmpty() ? "La solicitud tiene datos inválidos"
+                        : String.join("; ", new TreeMap<>(fieldErrors).values()));
+        problem.setTitle("Validación de datos fallida");
         problem.setType(URI.create("https://truckcar.com/errors/validation-error"));
         problem.setProperty("invalidParams", fieldErrors);
         problem.setProperty("timestamp", Instant.now());
@@ -70,7 +75,7 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleAccessDenied(AccessDeniedException ex) {
         log.warn("Access denied: {}", ex.getMessage());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
-        problem.setTitle("Forbidden");
+        problem.setTitle("Operación no permitida");
         problem.setType(URI.create("https://truckcar.com/errors/forbidden"));
         problem.setProperty("timestamp", Instant.now());
         return problem;
@@ -81,17 +86,17 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleUnreadableBody(HttpMessageNotReadableException ex) {
         log.debug("Unreadable request body: {}", ex.getMessage());
         // The parser detail stays in the log: it may echo parts of the body and internal class names.
-        return badRequest("The body must be valid UTF-8 JSON with the expected fields and values");
+        return badRequest("El cuerpo debe ser JSON válido en UTF-8 con los campos y valores esperados");
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        return badRequest(ex.getName() + ": value has the wrong type");
+        return badRequest(ex.getName() + ": valor con un tipo incorrecto");
     }
 
     private static ProblemDetail badRequest(String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
-        problem.setTitle("Bad Request");
+        problem.setTitle("Solicitud inválida");
         problem.setType(URI.create("https://truckcar.com/errors/bad-request"));
         problem.setProperty("timestamp", Instant.now());
         return problem;
@@ -103,12 +108,13 @@ public class GlobalExceptionHandler {
         // otherwise turn them into a 500 before the default resolver sees them.
         if (ex instanceof ErrorResponse errorResponse && errorResponse.getStatusCode().is4xxClientError()) {
             ProblemDetail problem = errorResponse.getBody();
+            problem.setTitle("Solicitud inválida");
             problem.setProperty("timestamp", Instant.now());
             return problem;
         }
         log.error("Unhandled exception: {}", ex.getMessage(), ex);
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred");
-        problem.setTitle("Internal Server Error");
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "No se pudo procesar la solicitud de notificaciones");
+        problem.setTitle("Error interno");
         problem.setType(URI.create("https://truckcar.com/errors/internal"));
         problem.setProperty("timestamp", Instant.now());
         return problem;

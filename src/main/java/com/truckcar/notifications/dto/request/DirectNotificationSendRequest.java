@@ -17,13 +17,13 @@ import java.util.UUID;
 @AllArgsConstructor
 public class DirectNotificationSendRequest {
 
-    @NotNull(message = "recipientUserId is required")
+    @NotNull(message = "recipientUserId es obligatorio")
     private UUID recipientUserId;
 
-    @NotNull(message = "category is required")
+    @NotNull(message = "category es obligatorio")
     private NotificationCategory category;
 
-    @NotNull(message = "channel is required")
+    @NotNull(message = "channel es obligatorio")
     private NotificationChannel channel;
 
     @Builder.Default
