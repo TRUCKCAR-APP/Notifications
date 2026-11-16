@@ -12,6 +12,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class NotificationTemplateUpdateRequest {
 
-    @NotBlank(message = "templateText cannot be blank")
+    @NotBlank(message = "templateText no puede estar vacío")
     private String templateText;
 }

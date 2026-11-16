@@ -38,7 +38,7 @@ public class NotificationTemplateServiceImpl implements NotificationTemplateServ
     @Transactional(readOnly = true)
     public NotificationTemplateResponse getTemplateById(UUID id) {
         NotificationTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Notification template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la plantilla de notificación con id " + id));
         return templateMapper.toResponse(template);
     }
 
@@ -46,7 +46,7 @@ public class NotificationTemplateServiceImpl implements NotificationTemplateServ
     @Transactional
     public NotificationTemplateResponse updateTemplate(UUID id, NotificationTemplateUpdateRequest request) {
         NotificationTemplate template = templateRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Notification template not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la plantilla de notificación con id " + id));
 
         template.setTemplateText(request.getTemplateText());
         NotificationTemplate updated = templateRepository.save(template);

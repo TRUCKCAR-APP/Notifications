@@ -237,7 +237,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(readOnly = true)
     public NotificationResponse getNotificationById(UUID id) {
         Notification notification = notificationRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Notification not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la notificación con id " + id));
         return notificationMapper.toResponse(notification);
     }
 
